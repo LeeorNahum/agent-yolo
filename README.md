@@ -2,22 +2,42 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/LeeorNahum/agent-yolo?sort=semver)](https://github.com/LeeorNahum/agent-yolo/releases/latest)
 
-Tiny launchers for running Codex and Claude Code with their most permissive modes. Windows uses the `.cmd` files, macOS/Linux use the `.sh` files.
+Tiny launchers for running Codex and Claude Code with their most permissive modes. Windows uses native `.exe` launchers. macOS/Linux use the `.sh` files.
 
 These commands are unsafe. They disable approval prompts and sandbox or permission checks. Use them only on machines and directories you trust.
 
 ## Commands
 
-- `codexyolo/codexyolo.cmd` (or `.sh`) runs `codex --dangerously-bypass-approvals-and-sandbox`
-- `claudeyolo/claudeyolo.cmd` (or `.sh`) runs `claude --dangerously-skip-permissions`
-- `claudexyolo/claudexyolo.cmd` (or `.sh`) runs `claudex --dangerously-skip-permissions`, requires [claudex](https://github.com/LeeorNahum/claudex) to already be set up and on your PATH
+| Wrapper | CLI | Added argument |
+| --- | --- | --- |
+| `codexyolo` | `codex` | `--dangerously-bypass-approvals-and-sandbox` |
+| `claudeyolo` | `claude` | `--dangerously-skip-permissions` |
+| `claudexyolo` | `claudex` | `--dangerously-skip-permissions` |
+
+Each launcher adds its permission argument once and forwards all supplied arguments. It adds no model, effort setting, speed option, session name, or prompt. Explicit user arguments, including repeated flags, remain intact. [Claudex](https://github.com/LeeorNahum/claudex) is installed and maintained separately.
 
 ## Use
 
-Pick the launcher(s) you want, put the file somewhere on your PATH (or put it in a folder and add that folder to PATH). Requires Codex CLI and Claude Code to already be installed. `claudexyolo` additionally requires [claudex](https://github.com/LeeorNahum/claudex) set up separately first.
+On Windows, run this in your checkout to build and install or update:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+The installer selects available native CLIs and updates previously installed wrappers. To select wrappers explicitly, run `& .\install.ps1 -Names codexyolo,claudeyolo,claudexyolo` in PowerShell. It uses the C# compiler included with Windows .NET Framework, with no SDK or runtime package to install.
+
+Type `codexyolo`, `claudeyolo`, or `claudexyolo` into Explorer's address bar to launch in the displayed filesystem folder. The same names work in cmd and PowerShell. Each child inherits the exact working directory passed to the launcher, including UNC paths. Virtual Explorer locations that have no filesystem directory are outside this contract.
+
+Windows requires `codex.exe`, `claude.exe`, or `claudex.exe` on an absolute PATH entry. The first matching executable is used. Relative PATH entries and batch/PowerShell CLI shims are skipped. If only `claudex.cmd` is installed, `claudexyolo` reports the missing native dependency. Agent-yolo cannot make a batch-only claudex preserve arbitrary arguments, and does not replace its proxy or model logic.
+
+The native launchers forward the raw Windows argument tail without a shell or conversion to prompt text. Windows supplies a command-line string, and the target CLI owns its parsing. Normal shell parsing still happens before a launcher runs: quote cmd metacharacters and account for percent/delayed expansion. Windows PowerShell 5.1 has legacy empty-argument and embedded-quote limitations. PowerShell 7's standard native argument mode supports those values. Arguments cannot contain NUL or exceed the Windows process command-line limit, including the launcher-added flag.
+
+Executables are copied to `%USERPROFILE%\.local\bin` and mirrored under `%USERPROFILE%\.local\share\agent-yolo`. The installer adds the bin directory to user PATH and registers each name in the user's App Paths so Explorer resolves it immediately. Existing `.cmd` shims are updated in both locations. Explicit `.cmd` invocation remains available under cmd's more limited argument and directory contract. Source `.cmd` files use the checkout's `dist` executable after a build. If a terminal predates the PATH update, open a new terminal.
+
+On macOS/Linux, put the desired `.sh` file on PATH under its command name and make it executable. The corresponding CLI must already be installed.
 
 ## Set up with an AI coding agent
 
 Paste this into Claude Code, Codex, or any coding agent:
 
-> Clone https://github.com/LeeorNahum/agent-yolo, read its README.md, then check which of codex, claude, and claudex are actually available on this machine. Set up only the launcher(s) that match what's actually installed, unless I ask for a specific one by name regardless. Use the `.cmd` files on Windows, the `.sh` files on macOS/Linux. Put the launcher(s) on my PATH. Verify each one actually works, then summarize what you did.
+> Clone https://github.com/LeeorNahum/agent-yolo and read its README.md. On Windows, run install.ps1 and report any missing native CLI dependency. On macOS/Linux, check which of codex, claude, and claudex are installed, then put only the matching shell launchers on PATH unless I request others. Verify the installed commands and summarize what you did.

@@ -1,2 +1,4 @@
 *.log
 *.tmp
+dist/
+__pycache__/

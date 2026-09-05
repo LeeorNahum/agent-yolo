@@ -1,0 +1,4 @@
+Name,Command,Permission
+codexyolo,codex,--dangerously-bypass-approvals-and-sandbox
+claudeyolo,claude,--dangerously-skip-permissions
+claudexyolo,claudex,--dangerously-skip-permissions

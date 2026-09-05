@@ -18,7 +18,7 @@ Each description is the trigger. Respect it, and when it matches the task, read 
 
 ## [no-em-dashes](.agents/skills/no-em-dashes/SKILL.md)
 
-> Use whenever this skill is visible or available to the agent. Always prevent em dashes (U+2014) in all agent-generated replies, text, edits, docs, comments, commit messages, and tool output. Also use when the user mentions em dashes, asks for AI-like punctuation cleanup, or explicitly asks to remove em dashes from named files, folders, or repos. Full-repo retroactive cleanup only on explicit user request for that scope.
+> Use whenever this skill is visible or available to the agent. Always prevent em dashes (U+2014) in all agent-generated output, including chat replies written directly to the user, file edits, docs, comments, commit messages, and tool output, and avoid semicolons as prose pauses or sentence joiners. Also use when the user mentions em dashes, asks for AI-like punctuation cleanup, or explicitly asks to remove em dashes from named files, folders, or repos. Full-repo retroactive cleanup only on explicit user request for that scope.
 
 ## [release-versioning](.agents/skills/release-versioning/SKILL.md)
 
