@@ -5,6 +5,35 @@ $wrappers = @(Import-Csv -LiteralPath "$PSScriptRoot\wrappers.csv")
 foreach ($name in $Names) {
     if ($name -notin $wrappers.Name) { throw "Unknown wrapper: $name" }
 }
+function Install-Launcher([string] $Source, [string] $Destination) {
+    # Windows locks a running executable against overwrite and delete but normally allows
+    # renaming it, so stage the new copy, move the old one aside, and swap. Each install tries
+    # to delete set-aside copies, which succeeds once nothing runs from them.
+    $id = [guid]::NewGuid().ToString('N')
+    $staged = "$Destination.$id.new"
+    $aside = "$Destination.$id.old"
+    try {
+        Copy-Item -LiteralPath $Source -Destination $staged
+        if (Test-Path -LiteralPath $Destination) {
+            try { Move-Item -LiteralPath $Destination -Destination $aside }
+            catch {
+                # -2147024864 is HRESULT 0x80070020, ERROR_SHARING_VIOLATION: a handle without delete sharing.
+                $advice = if ($_.Exception.HResult -eq -2147024864) { ' Another program has the file open. Close that program, or wait for a scan to finish, then rerun install.ps1.' } else { '' }
+                throw "Cannot replace $Destination. $($_.Exception.Message)$advice"
+            }
+        }
+        try { Move-Item -LiteralPath $staged -Destination $Destination }
+        catch {
+            if (!(Test-Path -LiteralPath $aside)) { throw "Cannot install $Destination. $($_.Exception.Message)" }
+            Move-Item -LiteralPath $aside -Destination $Destination
+            throw "Cannot install $Destination. The previous launcher was restored. $($_.Exception.Message)"
+        }
+    }
+    finally { Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue }
+    $leftover = '^' + [regex]::Escape((Split-Path -Leaf $Destination)) + '\.[0-9a-f]{32}\.(old|new)$'
+    Get-ChildItem -LiteralPath (Split-Path -Parent $Destination) -File | Where-Object { $_.Name -match $leftover } |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue }
+}
 $bin = Join-Path $env:USERPROFILE '.local\bin'
 $share = Join-Path $env:USERPROFILE '.local\share\agent-yolo'
 New-Item -ItemType Directory -Force -Path $bin, $share | Out-Null
@@ -16,9 +45,9 @@ foreach ($wrapper in $wrappers) {
     if ($Names.Count -gt 0) { if ($name -notin $Names) { continue } }
     elseif (!$native -and !$existing) { continue }
     $target = New-Item -ItemType Directory -Force -Path "$share\$name"
-    Copy-Item -LiteralPath "$PSScriptRoot\dist\$name.exe" -Destination "$target\$name.exe" -Force
+    Install-Launcher "$PSScriptRoot\dist\$name.exe" "$target\$name.exe"
     Copy-Item -LiteralPath "$PSScriptRoot\$name\$name.cmd" -Destination "$target\$name.cmd" -Force
-    Copy-Item -LiteralPath "$PSScriptRoot\dist\$name.exe" -Destination "$bin\$name.exe" -Force
+    Install-Launcher "$PSScriptRoot\dist\$name.exe" "$bin\$name.exe"
     # Update existing shims too, so an explicit .cmd invocation cannot reach stale code.
     if (Test-Path -LiteralPath "$bin\$name.cmd") {
         Copy-Item -LiteralPath "$PSScriptRoot\$name\$name.cmd" -Destination "$bin\$name.cmd" -Force

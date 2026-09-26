@@ -76,6 +76,9 @@ class WindowsLaunchers(unittest.TestCase):
         if not compiler.exists():
             compiler = Path(os.environ["SystemRoot"]) / "Microsoft.NET/Framework/v4.0.30319/csc.exe"
         subprocess.run([str(compiler), "/nologo", "/warnaserror+", "/out:" + str(cls.targets / "probe.exe"), str(ROOT / "tests/probe.cs")], check=True)
+        # Stands in for a launcher still waiting on its agent.
+        (cls.base / "sleep.cs").write_text("class S { static void Main() { System.Threading.Thread.Sleep(60000); } }")
+        subprocess.run([str(compiler), "/nologo", "/warnaserror+", "/out:" + str(cls.base / "sleep.exe"), str(cls.base / "sleep.cs")], check=True)
         for wrapper in WRAPPERS:
             name = wrapper["Name"]
             shutil.copy2(cls.targets / "probe.exe", cls.targets / (wrapper["Command"] + ".exe"))
@@ -233,6 +236,61 @@ class WindowsLaunchers(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         for wrapper in WRAPPERS:
             self.assertTrue((checkout / "dist" / (wrapper["Name"] + ".exe")).is_file())
+
+    def test_installer_replaces_running_launcher(self):
+        folder = self.base / "replace & % 日本"
+        folder.mkdir()
+        source, destination = self.targets / "probe.exe", folder / "claudeyolo.exe"
+        mine = folder / "claudeyolo.exe.backup.old"
+        mine.write_bytes(b"user file")
+        # Load only Install-Launcher from install.ps1, so PATH and App Paths stay untouched.
+        # YOLO_FAIL_PROMOTION makes the staged file's final move fail, to reach the restore path.
+        script = ("$ErrorActionPreference = 'Stop'; "
+                  "function Move-Item([string] $LiteralPath, [string] $Destination) { "
+                  "if ($env:YOLO_FAIL_PROMOTION -and $LiteralPath.EndsWith('.new')) { throw 'injected promotion failure' } "
+                  "Microsoft.PowerShell.Management\\Move-Item -LiteralPath $LiteralPath -Destination $Destination }; "
+                  "$ast = [Management.Automation.Language.Parser]::ParseFile($env:YOLO_INSTALL, [ref]$null, [ref]$null); "
+                  "$function = $ast.Find({ param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'Install-Launcher' }, $true); "
+                  ". ([ScriptBlock]::Create($function.Extent.Text)); "
+                  "try { Install-Launcher $env:YOLO_SOURCE $env:YOLO_DESTINATION } catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }")
+        encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+        os.environ.update(YOLO_INSTALL=str(ROOT / "install.ps1"), YOLO_SOURCE=str(source), YOLO_DESTINATION=str(destination))
+        install = lambda: subprocess.run([self.powershell, "-NoProfile", "-EncodedCommand", encoded], capture_output=True, timeout=30)
+        leftovers = lambda: sorted(p.name for p in folder.iterdir() if p not in (destination, mine))
+        result = install()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(destination.read_bytes(), source.read_bytes())
+        shutil.copy2(self.base / "sleep.exe", destination)
+        running = subprocess.Popen([str(destination)])
+        try:
+            result = install()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(destination.read_bytes(), source.read_bytes())
+            self.assertEqual(len(leftovers()), 1, "the running copy stays aside until it exits")
+        finally:
+            running.kill()
+            running.wait()
+        self.assertEqual(install().returncode, 0)
+        self.assertEqual(leftovers(), [])
+        self.assertEqual(mine.read_bytes(), b"user file")
+        # Python's handle does not share delete access, which blocks the rename.
+        with destination.open("rb"):
+            result = install()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b"Cannot replace", result.stderr)
+        self.assertIn(b"Close that program", result.stderr)
+        self.assertEqual(destination.read_bytes(), source.read_bytes())
+        self.assertEqual(leftovers(), [])
+        shutil.copy2(self.base / "sleep.exe", destination)
+        os.environ["YOLO_FAIL_PROMOTION"] = "1"
+        try:
+            result = install()
+        finally:
+            del os.environ["YOLO_FAIL_PROMOTION"]
+        self.assertIn(b"previous launcher was restored", result.stderr)
+        self.assertIn(b"injected promotion failure", result.stderr)
+        self.assertEqual(destination.read_bytes(), (self.base / "sleep.exe").read_bytes(), "the original is restored")
+        self.assertEqual(leftovers(), [])
 
     def test_legacy_regression_evidence(self):
         # Reproduce the previous two-layer installation without touching installed files.
