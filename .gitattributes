@@ -1,7 +1,7 @@
 # Binary assets: never let core.autocrlf touch these. Without this,
 # git's binary-detection heuristic can misfire on a later checkout/add
 # and silently corrupt the file by converting line endings inside
-# binary data. Confirmed happening for real in the sibling planning repo.
+# binary data.
 *.png binary
 *.jpg binary
 *.jpeg binary
@@ -12,3 +12,8 @@
 *.zip binary
 *.exe binary
 *.ico binary
+
+# Launchers: cmd.exe can misparse LF batch files, and a CRLF shebang breaks
+# the .sh launchers, so pin both endings regardless of core.autocrlf.
+*.cmd text eol=crlf
+*.sh text eol=lf

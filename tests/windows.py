@@ -103,6 +103,10 @@ class WindowsLaunchers(unittest.TestCase):
         self.evidence.append(dict(wrapper=wrapper["Name"], case=label, cwd=values[0], argv=values[2:], raw=values[1], exit=code))
         self.capture.unlink()
 
+    def assert_crlf(self, path, fix):
+        rest = path.read_bytes().replace(b"\r\n", b"")
+        self.assertFalse(b"\r" in rest or b"\n" in rest, path.name + " has a line ending other than CRLF. " + fix)
+
     def run_native(self, wrapper, args, shell=False, cwd=None):
         cwd = cwd or self.cwd
         exe = self.bin / (wrapper["Name"] + ".exe")
@@ -211,6 +215,10 @@ class WindowsLaunchers(unittest.TestCase):
             name = wrapper["Name"]
             self.assertEqual((ROOT / name / (name + ".sh")).read_text().splitlines(),
                              ["#!/bin/sh", 'exec ' + wrapper["Command"] + ' ' + wrapper["Permission"] + ' "$@"'])
+            # .gitattributes pins these endings. A mismatch means a stale checkout or an editor that changed them.
+            restore = ", or, if it has no local edits, delete it and restore it with git checkout."
+            self.assert_crlf(ROOT / name / (name + ".cmd"), "Save it with CRLF endings" + restore)
+            self.assertNotIn(b"\r", (ROOT / name / (name + ".sh")).read_bytes(), name + ".sh contains CR. Save it with LF endings" + restore)
             cmd = (ROOT / name / (name + ".cmd")).read_text()
             self.assertNotIn("call ", cmd.lower())
             self.assertNotIn("--", cmd)
@@ -255,6 +263,15 @@ class WindowsLaunchers(unittest.TestCase):
                 finally:
                     os.environ["PATH"] = previous
                 self.check_capture(wrapper, args, self.cwd, "installed App Paths " + suffix, code)
+
+    @unittest.skipUnless(OPTIONS.installed, "Requires installed shims")
+    def test_installed_shim_endings(self):
+        local = Path(os.environ["USERPROFILE"]) / ".local"
+        for wrapper in WRAPPERS:
+            name = wrapper["Name"]
+            for shim in (local / "bin" / (name + ".cmd"), local / "share/agent-yolo" / name / (name + ".cmd")):
+                if shim.exists():
+                    self.assert_crlf(shim, "Fix this checkout's launcher endings, then rerun install.ps1.")
 
     @unittest.skipUnless(OPTIONS.unc, "Use --unc with a reachable UNC directory")
     def test_unc(self):
